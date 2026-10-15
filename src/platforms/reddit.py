@@ -1,3 +1,15 @@
+"""
+PRAW-based Reddit adapter. Cannot go live: Reddit will not let this account
+create an API app (the "create app" form never fires a request — see
+NEXT-SESSION-PROMPT.md, "Reddit: the API path is dead, the browser path is
+open"). client_id/client_secret can never be populated, so RedditAdapter()
+always raises and adapter_loader falls back to the simulator.
+
+Superseded by a browser-automation adapter (src/platforms/reddit_browser.py,
+not yet built) driving a real logged-in session. Left in place as reference/
+in case Reddit ever opens API access; not wired to anything once the browser
+adapter lands.
+"""
 import logging
 import os
 import random

@@ -19,16 +19,17 @@ def write_run_json(run):
 def write_report_txt(run):
     path = _log_dir_for_today() / "report.txt"
     lines = []
-    status = run.get("final_status", "UNKNOWN")
     successes = run.get("successes", 0)
-    goal = run.get("daily_goal", 3)
-    lines.append(f"Revenant Relay - {status} - {successes}/{goal} Posted")
+    lines.append(subject_line(run))
     lines.append("")
     lines.append(f"Run ID: {run['run_id']}")
     lines.append(f"Date: {run['date']}  Mode: {run['mode']}")
     lines.append(f"Started: {run['started_at']}  Ended: {run.get('ended_at')}")
     lines.append(f"Stop reason: {run.get('stop_reason')}")
     lines.append(f"Successes: {successes}   Failures: {run.get('failures', 0)}")
+    sim_count = run.get("simulated_successes", 0)
+    if sim_count:
+        lines.append(f"  (of which {sim_count} simulated — no adapter loaded, nothing real was posted)")
     lines.append("")
 
     succeeded = [a for a in run["attempts"] if a["success"]]
@@ -37,7 +38,8 @@ def write_report_txt(run):
     if succeeded:
         lines.append("Successful posts:")
         for a in succeeded:
-            lines.append(f"  - {a['platform']}  ad={a['ad_id']}  tier={a['tier']}  url={a.get('post_url')}")
+            tag = " [SIMULATED]" if a.get("simulated") else ""
+            lines.append(f"  - {a['platform']}  ad={a['ad_id']}  tier={a['tier']}  url={a.get('post_url')}{tag}")
         lines.append("")
 
     if failed:
@@ -55,8 +57,19 @@ def write_report_txt(run):
     return path
 
 
-def subject_line(run):
+def subject_line(run, prefix="Revenant Relay"):
+    """Email/console/report subject.
+
+    Names simulation outright so a dev run that fell back to the simulator can
+    never read as "COMPLETE - 3/3 Posted". The posted count is real posts only.
+    """
     successes = run.get("successes", 0)
     goal = run.get("daily_goal", 3)
     status = run.get("final_status", "UNKNOWN")
-    return f"Revenant Relay - {status} - {successes}/{goal} Posted"
+    simulated = run.get("simulated_successes", 0)
+    real = successes - simulated
+    if simulated and real == 0:
+        return f"{prefix} - SIMULATED - 0/{goal} Posted ({simulated} simulated)"
+    if simulated:
+        return f"{prefix} - {status} - {real}/{goal} Posted ({simulated} simulated)"
+    return f"{prefix} - {status} - {successes}/{goal} Posted"

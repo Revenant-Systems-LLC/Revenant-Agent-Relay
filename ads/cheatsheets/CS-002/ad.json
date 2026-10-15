@@ -11,7 +11,8 @@
     "r/LocalLLaMA"
   ],
   "post_format": "image",
-  "media_path": "C:/Users/Dave/Desktop/algiz2.png",
+  "media_path": "ads/cheatsheets/CS-002/comb.png",
+  "url": "https://www.revenantsystems.net",
   "caption": "REVENANT SYSTEMS // EMOTIONAL SUBSTRATE GOVERNANCE\n\nHow do you prevent an autonomous agent from sliding into adversarial drift?\n\nSAGE wraps LLMs in a dual-layer emotional tracking pipeline:\n1. Internal Model operates in VAD Space (Valence, Arousal, Dominance) for sentiment baseline.\n2. External Safety Projects in VAM Space (Valence, Activation, Malice).\n\nMalice is a derived safety metric calculated in real-time from negative valence spikes, dominance anomalies, and recursive drift during \u03a9 cycles. \n\n          (\uff61\u00ec _ \u00ed\uff61)\u2703   Lock down your agent's drift before it locks you out.\n\nDavid Fisher | Founder | Revenant Systems\nDave\u233d\u1da0\u209c\u2095\u2091Dead | AI Engineering Student | AI Alignment\nhttps://www.revenantsystems.net/\nhttps://www.linkedin.com/in/daveisfromthegrave/",
   "platform_captions": {
     "reddit": "Stop saying 'please' and 'thank you' to your AI. Polite words are literal token waste and distort system behavior. Be concise, use strict delimiters, and command the model.",

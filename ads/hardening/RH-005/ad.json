@@ -8,6 +8,7 @@
   ],
   "post_format": "image",
   "media_path": "m:/Projects/Revenant-Relay/assets/rsh_hardening_infographic.png",
+  "url": "https://www.revenantsystems.net",
   "caption": "REVENANT HARDENING // RUNTIME AUDIT CHECKLIST\n\n>> rsh scan .\n>> STATUS: VERIFYING SANDBOX BOUNDARIES\n\nMost agentic systems are deployed with gaping security holes\u2014unrestricted shell runtimes, unbounded context memory, and zero delimiter isolation.\n\nThis checklist outlines the essential steps to secure your runtime:\n\n[ ] Context Isolation (prevent history leaks)\n[ ] Delimiter Sandboxing (block injection bypasses)\n[ ] Zero-Trust Tool Access (wrap execution shells in sandbox layers)\n[ ] Token Burn Prevention (enforce request limits)\n\n          (\uff61\u00ec _ \u00ed\uff61)\u2703   Harden your systems before prod.\n\nDavid Fisher | Founder | Revenant Systems\nDave\u233d\u1da0\u209c\u2095\u2091Dead | AI Engineering Student | AI Alignment\nhttps://www.revenantsystems.net/\nhttps://www.linkedin.com/in/daveisfromthegrave/",
   "platform_captions": {
     "x": "rsh scan . -> STATUS: SECURING SANDBOX \ud83d\udee1\ufe0f\ud83d\udc80\n\nStop deploying agents with unrestricted shell runtimes and soft prompts. Check the essential checklist for production sandboxing and boundary controls.\n\n(\uff61\u00ec _ \u00ed\uff61)\u2703  https://www.revenantsystems.net"

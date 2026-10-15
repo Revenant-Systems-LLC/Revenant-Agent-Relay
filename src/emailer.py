@@ -5,6 +5,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import parseaddr
 
+from .reporter import subject_line
+
 
 def send_email_report(run_log, settings, mode):
     """
@@ -59,10 +61,7 @@ def send_email_report(run_log, settings, mode):
         return status
 
     try:
-        final_status = run_log.get("final_status", "UNKNOWN")
-        successes = run_log.get("successes", 0)
-        goal = run_log.get("daily_goal", 3)
-        subject = f"{subject_prefix} - {final_status} - {successes}/{goal} Posted"
+        subject = subject_line(run_log, prefix=subject_prefix)
         body = _build_report_body(run_log)
 
         msg = MIMEMultipart()

@@ -87,7 +87,7 @@
     "password_env_var": "RR_BLUESKY_PASSWORD"
   },
   "lead_scout": {
-    "enabled": true,
+    "enabled": false,
     "max_leads_per_run": 5,
     "keywords": [
       "VS Code theme",

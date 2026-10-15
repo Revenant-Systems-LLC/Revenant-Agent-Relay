@@ -6,7 +6,8 @@
     "x"
   ],
   "post_format": "image",
-  "media_path": "C:/The-Ossuary/Revenant-Systems/Branding-Marketing/revenantsystems-net/assets/revsys-wordmark-alt.png",
+  "media_path": "ads/cheatsheets/CS-001/checklist.png",
+  "url": "https://www.revenantsystems.net",
   "caption": "REVENANT SYSTEMS // RAGE OPERATOR ALGEBRA\n\nStop writing sloppy text prompts and praying for logical alignment. An LLM is a stateless token predictor\u2014you must bind it in a governed runtime.\n\nThe RAGE (Revenant Alignment Governance Engine) pipeline wraps model inference inside a formal Operator Algebra. Tier 0 Atomic Operators:\n\n\u03a9 - Recursive Refinement (iterates to fixed-point convergence)\n\u03c7 - Coherence Selection (samples rewrites to minimize entropy)\n\u03c3 - Skeptical Contrast (removes unsupported claims against memory)\n[...] - Containment (enforces strict context boundary limits)\n\n          (\u30ce\u0ca0\u76ca\u0ca0)\u30ce\u5f61\u253b\u2501\u253b   A prompt is not an architecture.\n\nDavid Fisher | Founder | Revenant Systems\nDave\u233d\u1da0\u209c\u2095\u2091Dead | AI Engineering Student | AI Alignment\nhttps://www.revenantsystems.net/\nhttps://www.linkedin.com/in/daveisfromthegrave/",
   "platform_captions": {
     "pinterest": "The AI Architect's Checklist. \ud83d\udc80\u2728 A complete, saveable blueprint for designing zero-inference agent environments. #cheatsheet #infographic #ai #engineering #developer #architecture",

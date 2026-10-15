@@ -5,7 +5,8 @@
     "linkedin"
   ],
   "post_format": "image",
-  "media_path": "C:/Users/Dave/Desktop/algiz22.png",
+  "media_path": "ads/cheatsheets/CS-003/matrix_preview.png",
+  "url": "https://www.revenantsystems.net",
   "caption": "REVENANT SYSTEMS // THE SAGE STATE MACHINE\n\nStateless wrappers are a security nightmare. SAGE processes every input through a unified cognitive state machine that logs and audits every transformation.\n\nEvery RAGE operator modifies a single, inspectable state object:\nSAGE State {\n  Text,\n  Emotion (VAD -> VAM),\n  Coherence (embedding similarity),\n  Entropy (log probability),\n  Memory[] (weighted experiences),\n  Ethics (multi-layer priority stack),\n  Trace[] (step-by-step transaction ledger)\n}\n\n          \u0ca0_\u0cb0\u0cc3   Complete auditability. Zero magic.\n\nDavid Fisher | Founder | Revenant Systems\nDave\u233d\u1da0\u209c\u2095\u2091Dead | AI Engineering Student | AI Alignment\nhttps://www.revenantsystems.net/\nhttps://www.linkedin.com/in/daveisfromthegrave/",
   "platform_captions": {
     "linkedin": "The Genesis Prompt Matrix.\n\nMost developers write flat system prompts. The Genesis Matrix provides a structured blueprint for persona architecture that prevents jailbreaks and enforces logical compliance.\n\nDownload the checklist: https://revenantsystems.net",

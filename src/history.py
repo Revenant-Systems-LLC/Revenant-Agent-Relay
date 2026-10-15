@@ -54,12 +54,19 @@ def yesterdays_run():
 
 
 def platforms_used_yesterday():
-    """Return (succeeded, failed, attempted) sets from the most recent prior-day run."""
+    """Return (succeeded, failed, attempted) sets from the most recent prior-day run.
+
+    Simulated attempts are excluded entirely (not attempted/succeeded/failed) —
+    a dev-mode run that fell back to the simulator must not shift today's tier
+    selection as if something real happened.
+    """
     y = yesterdays_run()
     succeeded, failed, attempted = set(), set(), set()
     if not y:
         return succeeded, failed, attempted
     for a in y.get("attempts", []):
+        if a.get("simulated"):
+            continue
         platform = a.get("platform")
         if not platform:
             continue
@@ -73,11 +80,16 @@ def platforms_used_yesterday():
 
 
 def successful_ad_on_platform_yesterday(platform):
-    """Which ad_id, if any, succeeded on this platform in yesterday's run."""
+    """Which ad_id, if any, really succeeded on this platform in yesterday's run.
+
+    Simulated successes don't count — see platforms_used_yesterday().
+    """
     y = yesterdays_run()
     if not y:
         return None
     for a in y.get("attempts", []):
+        if a.get("simulated"):
+            continue
         if a.get("platform") == platform and a.get("success"):
             return a.get("ad_id")
     return None
