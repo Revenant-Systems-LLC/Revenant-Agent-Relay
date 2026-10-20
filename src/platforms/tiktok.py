@@ -162,11 +162,14 @@ class TikTokAdapter:
                     screenshot_path=screenshot_path,
                 )
         except PlaywrightTimeoutError as e:
+            # Page loads report their own timeouts (see _open), so this one
+            # came from waiting on an element: the UI or a selector changed,
+            # and a same-run retry would only hide that.
             screenshot_path = self._capture_screenshot(page)
             return _result(
                 False,
-                error_type="NETWORK_ERROR",
-                detected="Timeout while navigating TikTok pages.",
+                error_type="PLATFORM_AUTOMATION_ERROR",
+                detected="Timed out waiting for a TikTok page element; the UI or selectors may have changed.",
                 raw=repr(e),
                 screenshot_path=screenshot_path,
             )
@@ -186,8 +189,28 @@ class TikTokAdapter:
                 except Exception:
                     logger.debug("Failed to close browser during cleanup", exc_info=True)
 
+    def _open(self, page, url):
+        """Load a TikTok page, reporting a load timeout as NETWORK_ERROR.
+
+        The page never arriving is the one timeout that points at the
+        network; an element that never appears is UI breakage instead.
+        """
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except PlaywrightTimeoutError as e:
+            return {
+                "success": False,
+                "error_type": "NETWORK_ERROR",
+                "detected": f"Timeout while loading {url}.",
+                "raw": repr(e),
+                "post_url": None,
+            }
+        return None
+
     def _login_if_needed(self, page):
-        page.goto("https://www.tiktok.com/upload", wait_until="domcontentloaded", timeout=60000)
+        load_error = self._open(page, "https://www.tiktok.com/upload")
+        if load_error:
+            return load_error
         page.wait_for_timeout(1500)
         current_url = page.url.lower()
 
@@ -249,7 +272,9 @@ class TikTokAdapter:
         return None
 
     def _upload_media(self, page, media_file):
-        page.goto("https://www.tiktok.com/upload", wait_until="domcontentloaded", timeout=60000)
+        load_error = self._open(page, "https://www.tiktok.com/upload")
+        if load_error:
+            return load_error
         page.wait_for_timeout(2500)
 
         file_inputs = page.locator('input[type="file"]')
