@@ -83,6 +83,15 @@ class TikTokAdapter:
                 f"{self.username_env}, {self.password_env}"
             )
 
+        # Raise here rather than failing every post: with automation off the
+        # adapter can only fail, and an init error is what lets load_adapter()
+        # treat TikTok as unavailable.
+        if not self.enable_automation:
+            raise RuntimeError(
+                "TikTok automation is disabled. "
+                f"Set {self.enable_automation_env}=true to run browser flow."
+            )
+
         mode = (settings or {}).get("mode", "dev")
         mode_settings = (settings or {}).get(f"{mode}_mode", {})
         self.headless = mode_settings.get("headless", mode == "scheduled")
@@ -114,14 +123,6 @@ class TikTokAdapter:
             )
             
         resolved = media_files[0]
-
-        if not self.enable_automation:
-            return _result(
-                False,
-                error_type="PLATFORM_AUTOMATION_ERROR",
-                detected="TikTok automation is disabled. Set RR_TIKTOK_ENABLE_AUTOMATION=true to run browser flow.",
-                raw="automation_disabled",
-            )
 
         browser = None
         context = None
