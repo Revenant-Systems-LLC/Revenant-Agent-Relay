@@ -441,7 +441,7 @@ class SnapchatAdapter:
             "success": False,
             "error_type": "PLATFORM_AUTOMATION_ERROR",
             "detected": "Snapchat publish/save confirmation was ambiguous.",
-            "raw": "No reliable Snapchat confirmation signal found after submit action (missing entity ID URL/link, specific success toast/dialog, confirmation page transition, or created-row match).",
+            "raw": "No reliable Snapchat confirmation signal found after submit action (no navigation to an entity ID URL or confirmation route, and no specific success toast/dialog).",
             "post_url": None,
         }
 
@@ -468,6 +468,8 @@ class SnapchatAdapter:
         navigated = current_url != (url_before_submit or "")
 
         # 1) Created entity URL/ID capture (must include concrete ID/token).
+        # Only the page's own URL counts. A link to an entity proves nothing:
+        # Ads Manager links campaigns that already exist, and each has an ID.
         entity_url_markers = ["/campaigns/", "/ads/", "/ad-squad/"]
         if (
             navigated
@@ -479,18 +481,6 @@ class SnapchatAdapter:
                 "raw": "entity_url_with_id_detected",
                 "post_url": current_url,
             }
-
-        entity_link = page.locator('a[href*="/campaigns/"], a[href*="/ads/"], a[href*="/ad-squad/"]')
-        if entity_link.count() > 0:
-            href = entity_link.first.get_attribute("href")
-            if href:
-                normalized = href if href.startswith("http") else f"https://ads.snapchat.com{href}"
-                if self._url_has_entity_id(normalized):
-                    return {
-                        "detected": "Snapchat exposed a created campaign/ad entity link after submit.",
-                        "raw": "entity_link_with_id_detected",
-                        "post_url": normalized,
-                    }
 
         # 2) Snapchat-specific confirmation toasts/dialogs. A "Review your
         # campaign" dialog asks for a review before publishing; it confirms
