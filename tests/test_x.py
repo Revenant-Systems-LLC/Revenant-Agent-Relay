@@ -24,6 +24,8 @@ class FakePage:
     def __init__(self, html):
         self.url = "https://x.com/home"
         self.html = html
+        self.closed = False
+        self.screenshots = []
 
     def locator(self, selector):
         return FakeLocator()
@@ -32,7 +34,9 @@ class FakePage:
         return self.html
 
     def screenshot(self, path, **kwargs):
-        pass
+        if self.closed:
+            raise RuntimeError("Target page, context or browser has been closed")
+        self.screenshots.append(path)
 
 
 def _fake_sync_playwright(page):
@@ -43,21 +47,23 @@ def _fake_sync_playwright(page):
             return p
 
         def __exit__(self, *exc_info):
+            page.closed = True  # sync_playwright() teardown closes every page
             return False
 
     return _Manager
 
 
-def _post(monkeypatch, tmp_path, page):
+def _post(monkeypatch, tmp_path, page, **steps):
     monkeypatch.setenv("RR_X_USERNAME", "user")
     monkeypatch.setenv("RR_X_PASSWORD", "pw")
     monkeypatch.setattr(x, "LOGS_DIR", tmp_path / "logs")
     monkeypatch.setattr(x, "sync_playwright", _fake_sync_playwright(page))
 
     adapter = XAdapter({}, {"lead_scout": {"enabled": False}})
-    # Login, compose, fill and submit all succeed; only confirmation is under test.
+    # Login, compose, fill and submit all succeed unless a test passes its own
+    # step; only what happens after them is under test.
     for step in ("_ensure_logged_in", "_open_compose", "_fill_caption", "_submit_post"):
-        monkeypatch.setattr(adapter, step, lambda *args: None)
+        monkeypatch.setattr(adapter, step, steps.get(step, lambda *args: None))
     return adapter.post_ad({"id": "AD-1"}, "Caption")
 
 
@@ -77,3 +83,20 @@ def test_missing_confirmation_stays_an_automation_error(monkeypatch, tmp_path):
 
     assert result["success"] is False
     assert result["error_type"] == "PLATFORM_AUTOMATION_ERROR"
+
+
+@pytest.mark.parametrize("error", [
+    x.PlaywrightTimeoutError("Locator.click: Timeout 7000ms exceeded."),
+    RuntimeError("Target crashed"),
+])
+def test_failure_screenshot_is_taken_before_playwright_shuts_down(monkeypatch, tmp_path, error):
+    def broken_step(*args):
+        raise error
+
+    page = FakePage("<main>Home</main>")
+
+    result = _post(monkeypatch, tmp_path, page, _submit_post=broken_step)
+
+    assert result["success"] is False
+    assert result["screenshot_path"] is not None
+    assert page.screenshots == [result["screenshot_path"]]

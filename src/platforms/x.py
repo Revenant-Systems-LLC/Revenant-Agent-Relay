@@ -130,82 +130,90 @@ class XAdapter:
         browser = None
         context = None
         page = None
+        screenshot_path = None
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=self.headless)
                 context = browser.new_context()
                 page = context.new_page()
 
-                login_error = self._ensure_logged_in(page)
-                if login_error:
-                    login_error["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**login_error)
+                try:
+                    login_error = self._ensure_logged_in(page)
+                    if login_error:
+                        login_error["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**login_error)
 
-                compose_error = self._open_compose(page)
-                if compose_error:
-                    compose_error["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**compose_error)
+                    compose_error = self._open_compose(page)
+                    if compose_error:
+                        compose_error["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**compose_error)
 
-                fill_error = self._fill_caption(page, caption)
-                if fill_error:
-                    fill_error["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**fill_error)
+                    fill_error = self._fill_caption(page, caption)
+                    if fill_error:
+                        fill_error["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**fill_error)
 
-                if media_files:
-                    media_error = self._attach_media(page, media_files)
-                    if media_error:
-                        media_error["screenshot_path"] = self._capture_screenshot(page)
-                        return _result(**media_error)
+                    if media_files:
+                        media_error = self._attach_media(page, media_files)
+                        if media_error:
+                            media_error["screenshot_path"] = self._capture_screenshot(page)
+                            return _result(**media_error)
 
-                submit_error = self._submit_post(page)
-                if submit_error:
-                    submit_error["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**submit_error)
+                    submit_error = self._submit_post(page)
+                    if submit_error:
+                        submit_error["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**submit_error)
 
-                success_url, confirmation_note, uncertain = self._detect_post_confirmation(page)
-                if uncertain:
-                    screenshot = self._capture_screenshot(page)
-                    if confirmation_note == _RATE_LIMIT_NOTE:
+                    success_url, confirmation_note, uncertain = self._detect_post_confirmation(page)
+                    if uncertain:
+                        screenshot = self._capture_screenshot(page)
+                        if confirmation_note == _RATE_LIMIT_NOTE:
+                            return _result(
+                                False,
+                                error_type="RATE_LIMIT_ERROR",
+                                detected="X blocked the post or reported a rate limit after submit.",
+                                raw=confirmation_note,
+                                screenshot_path=screenshot,
+                            )
                         return _result(
                             False,
-                            error_type="RATE_LIMIT_ERROR",
-                            detected="X blocked the post or reported a rate limit after submit.",
+                            error_type="PLATFORM_AUTOMATION_ERROR",
+                            detected="Unable to reliably confirm X post success.",
                             raw=confirmation_note,
                             screenshot_path=screenshot,
                         )
+
+                    # Passive Lead Scout Sweep
+                    try:
+                        if self.settings.get("lead_scout", {}).get("enabled", True):
+                            from ..scout_logger import log_leads
+                            leads = self.scout_leads(page, self.settings)
+                            log_leads(leads)
+                    except Exception as e:
+                        print(f"[X Scout] Error running Lead Scout: {e}")
+
+                    if success_url:
+                        return _result(True, post_url=success_url)
+
                     return _result(
-                        False,
-                        error_type="PLATFORM_AUTOMATION_ERROR",
-                        detected="Unable to reliably confirm X post success.",
+                        True,
+                        post_url=None,
+                        detected="X UI indicated post completion, but no canonical post URL was captured.",
                         raw=confirmation_note,
-                        screenshot_path=screenshot,
                     )
-
-                # Passive Lead Scout Sweep
-                try:
-                    if self.settings.get("lead_scout", {}).get("enabled", True):
-                        from ..scout_logger import log_leads
-                        leads = self.scout_leads(page, self.settings)
-                        log_leads(leads)
-                except Exception as e:
-                    print(f"[X Scout] Error running Lead Scout: {e}")
-
-                if success_url:
-                    return _result(True, post_url=success_url)
-
-                return _result(
-                    True,
-                    post_url=None,
-                    detected="X UI indicated post completion, but no canonical post URL was captured.",
-                    raw=confirmation_note,
-                )
+                except Exception:
+                    # Capture now, while the browser is still alive. The handlers
+                    # below run after sync_playwright() has torn everything
+                    # down, where page.screenshot() can only fail.
+                    screenshot_path = self._capture_screenshot(page)
+                    raise
         except PlaywrightTimeoutError as exc:
             return _result(
                 False,
                 error_type="NETWORK_ERROR",
                 detected="Timeout while interacting with X pages.",
                 raw=repr(exc),
-                screenshot_path=self._capture_screenshot(page),
+                screenshot_path=screenshot_path,
             )
         except Exception as exc:
             error_type = self._classify_exception(exc)
@@ -214,7 +222,7 @@ class XAdapter:
                 error_type=error_type,
                 detected=str(exc),
                 raw=repr(exc),
-                screenshot_path=self._capture_screenshot(page),
+                screenshot_path=screenshot_path,
             )
         finally:
             if context is not None:
