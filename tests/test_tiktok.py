@@ -139,6 +139,31 @@ def test_element_timeout_is_not_reported_as_transient_network_error(monkeypatch,
     assert result["transient"] is False
 
 
+def _adapter(monkeypatch):
+    _set_credentials(monkeypatch)
+    monkeypatch.setenv("RR_TIKTOK_ENABLE_AUTOMATION", "true")
+    return TikTokAdapter({}, {})
+
+
+def test_challenge_check_ignores_words_in_page_source(monkeypatch):
+    # Ordinary TikTok pages carry "verify" and "captcha" in their scripts.
+    page = FakePage(
+        html='<script>var verifyFp = "verify_abc123"; loadCaptchaSdk();</script>',
+        visible_text="Upload video\nSelect video to upload",
+    )
+
+    assert _adapter(monkeypatch)._login_if_needed(page) is None
+
+
+def test_challenge_check_flags_visible_captcha_prompt(monkeypatch):
+    page = FakePage(visible_text="Verify to continue:\nDrag the slider to fit the puzzle")
+
+    result = _adapter(monkeypatch)._login_if_needed(page)
+
+    assert result["error_type"] == "AUTH_ERROR"
+    assert result["raw"] == "auth_challenge_detected"
+
+
 def test_page_load_timeout_stays_a_transient_network_error(monkeypatch, tmp_path):
     page = FakePage(goto_error=tiktok.PlaywrightTimeoutError("Page.goto: Timeout 60000ms exceeded."))
 

@@ -37,6 +37,22 @@ _ERROR_FIX = {
 
 _TRANSIENT_TYPES = {"NETWORK_ERROR"}
 
+# Matched against the text the page shows, not its HTML: page source can carry
+# words like "verify" and "captcha" in scripts on ordinary pages, which would
+# flag a logged-in session as challenged. Bare words such as "verify" are left
+# out because normal UI copy uses them too.
+_CHALLENGE_PHRASES = (
+    "captcha",
+    "verify to continue",
+    "drag the slider",
+    "drag the puzzle",
+    "security check",
+    "verification code",
+    "code sent",
+    "2-step verification",
+    "two-step verification",
+)
+
 
 def _resolve_media(media_path):
     p = Path(media_path)
@@ -247,11 +263,10 @@ class TikTokAdapter:
                 page.keyboard.press("Enter")
                 page.wait_for_timeout(4000)
 
-        content = page.content().lower()
+        visible_text = page.locator("body").inner_text().lower()
         url_now = page.url.lower()
 
-        challenge_markers = ["captcha", "verify", "two-step", "2-step", "security check", "qr code", "code sent"]
-        if any(m in content for m in challenge_markers):
+        if any(m in visible_text for m in _CHALLENGE_PHRASES):
             return {
                 "success": False,
                 "error_type": "AUTH_ERROR",
