@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -159,12 +160,13 @@ class XAdapter:
                             media_error["screenshot_path"] = self._capture_screenshot(page)
                             return _result(**media_error)
 
+                    url_before_submit = page.url
                     submit_error = self._submit_post(page)
                     if submit_error:
                         submit_error["screenshot_path"] = self._capture_screenshot(page)
                         return _result(**submit_error)
 
-                    success_url, confirmation_note, uncertain = self._detect_post_confirmation(page)
+                    success_url, confirmation_note, uncertain = self._detect_post_confirmation(page, url_before_submit)
                     if uncertain:
                         screenshot = self._capture_screenshot(page)
                         if confirmation_note == _RATE_LIMIT_NOTE:
@@ -444,18 +446,23 @@ class XAdapter:
             }
         return None
 
-    def _detect_post_confirmation(self, page):
-        # Prefer explicit URL from status links if present.
-        status_link = page.locator('a[href*="/status/"]').first
-        if status_link.count() > 0:
-            href = status_link.get_attribute("href")
-            if href:
-                if href.startswith("http"):
-                    return href, "status_link_detected", False
-                return f"https://x.com{href}", "status_link_detected", False
+    def _detect_post_confirmation(self, page, url_before_submit):
+        # Only evidence tied to this submit counts. The composer closes onto
+        # the home timeline, so a /status/ link elsewhere on the page is
+        # usually someone else's post and says nothing about ours.
+        if page.url != url_before_submit and self._is_own_status_url(page.url):
+            return page.url, "own_status_url_after_submit", False
 
-        explicit_confirmation = page.locator('[role="status"]:has-text("Your post was sent"), [data-testid="toast"]:has-text("Your post was sent")')
-        if explicit_confirmation.count() > 0:
+        send_toast = page.locator('[role="status"]:has-text("Your post was sent"), [data-testid="toast"]:has-text("Your post was sent")')
+        if send_toast.count() > 0:
+            # The toast's "View" link is the post that was just sent.
+            toast_link = send_toast.first.locator('a[href*="/status/"]')
+            if toast_link.count() > 0:
+                href = toast_link.first.get_attribute("href")
+                if href:
+                    if href.startswith("http"):
+                        return href, "send_toast_link_detected", False
+                    return f"https://x.com{href}", "send_toast_link_detected", False
             return None, "explicit_send_toast_detected", False
 
         html = page.content().lower()
@@ -477,6 +484,20 @@ class XAdapter:
         if "account locked" in html or "temporarily restricted" in html:
             return self._auth_error("X account locked or temporarily restricted.", "account_locked")
         return None
+
+    def _is_own_status_url(self, url):
+        """True for a status URL under this account's @handle.
+
+        The handle is RR_X_USERNAME, so when that is an email or phone number
+        nothing matches here and confirmation rests on the send toast.
+        """
+        parsed = urlparse(url or "")
+        host = (parsed.hostname or "").lower()
+        if host not in ("x.com", "twitter.com") and not host.endswith((".x.com", ".twitter.com")):
+            return False
+        parts = [part for part in parsed.path.split("/") if part]
+        handle = self.username.strip().lstrip("@").lower()
+        return len(parts) >= 3 and parts[0].lower() == handle and parts[1] == "status" and parts[2].isdigit()
 
     def _is_logged_in(self, page):
         if "x.com/home" in page.url.lower() or "x.com/compose" in page.url.lower():
