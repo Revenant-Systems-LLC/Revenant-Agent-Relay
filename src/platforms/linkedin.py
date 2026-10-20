@@ -304,8 +304,10 @@ class LinkedInAdapter:
         return None
 
     def _is_logged_in(self, page):
-        url = page.url.lower()
-        if "/feed" in url and "linkedin.com" in url and "/login" not in url:
+        # The path, not the whole URL: auth-wall and checkpoint redirects can
+        # carry /feed/ in their query string.
+        path = _linkedin_path(page.url)
+        if path is not None and (path == "/feed" or path.startswith("/feed/")):
             return True
         if page.locator('button[aria-label*="Start a post"]').count() > 0:
             return True

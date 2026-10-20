@@ -108,6 +108,18 @@ def test_landing_on_the_post_permalink_confirms(monkeypatch, tmp_path, url):
     assert result["post_url"] == url
 
 
+@pytest.mark.parametrize("url", [
+    "https://www.linkedin.com/authwall?trk=gf&sessionRedirect=https://www.linkedin.com/feed/",
+    "https://www.linkedin.com/checkpoint/challenge/AgE?original_referer=/feed/",
+])
+def test_feed_named_in_a_redirect_query_is_not_a_session(monkeypatch, tmp_path, url):
+    assert _adapter(monkeypatch, tmp_path)._is_logged_in(FakePage(url)) is False
+
+
+def test_feed_page_is_a_session(monkeypatch, tmp_path):
+    assert _adapter(monkeypatch, tmp_path)._is_logged_in(FakePage(FEED_URL)) is True
+
+
 def test_rate_limit_is_reported_when_nothing_confirms(monkeypatch, tmp_path):
     page = FakePage(FEED_URL, html="<div>You are temporarily restricted from posting.</div>")
 
