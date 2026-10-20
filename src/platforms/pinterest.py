@@ -142,13 +142,19 @@ class PinterestAdapter:
                 if self.dev_mode:
                     print("[PinterestAdapter] Running in dev mode with visible browser.")
 
-                self._login(page)
-                post_url = self._create_pin(page, media_files[0], title, description, destination_url)
+                try:
+                    self._login(page)
+                    post_url = self._create_pin(page, media_files[0], title, description, destination_url)
+                except Exception:
+                    # Capture now, while the browser is still alive. The handler
+                    # below runs after sync_playwright() has torn everything
+                    # down, where page.screenshot() can only fail.
+                    screenshot_path = self._save_failure_screenshot(page)
+                    raise
 
                 return _result(True, post_url=post_url)
         except Exception as e:
             kind = self._classify_error(e)
-            screenshot_path = self._save_failure_screenshot(page)
             return _result(False, error_type=kind, detected=str(e), raw=repr(e), screenshot_path=screenshot_path)
         finally:
             if context is not None:

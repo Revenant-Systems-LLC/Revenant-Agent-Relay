@@ -118,3 +118,13 @@ def test_login_waits_until_pinterest_leaves_the_login_page(monkeypatch, tmp_path
     result = _run(monkeypatch, tmp_path, page)
 
     assert result["success"] is True
+
+
+def test_failure_screenshot_is_taken_before_playwright_shuts_down(monkeypatch, tmp_path):
+    page = FakePage(login_lands_on=HOME_URL, timeout_on="pin-creation-tool")
+
+    result = _run(monkeypatch, tmp_path, page)
+
+    assert result["success"] is False
+    assert result["screenshot_path"] is not None
+    assert page.screenshots == [result["screenshot_path"]]
