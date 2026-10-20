@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,19 @@ def _resolve_media(media_path):
     if p.is_absolute():
         return p
     return ROOT / p
+
+
+def _linkedin_path(url):
+    """Lowercased path of a linkedin.com URL, or None for any other host.
+
+    URL checks look at the path only, never the whole string: a query string
+    can name another LinkedIn page.
+    """
+    parsed = urlparse(url or "")
+    host = (parsed.hostname or "").lower()
+    if host != "linkedin.com" and not host.endswith(".linkedin.com"):
+        return None
+    return parsed.path.lower()
 
 
 class LinkedInAdapter:
@@ -434,17 +448,29 @@ class LinkedInAdapter:
         body = page.content().lower()
         post_url = None
 
-        if "/posts/" in url_now or "/feed/update/" in url_now:
+        # Only signals that belong to this attempt count: landing on the new
+        # post's permalink, or LinkedIn's success toast, whose link is the new
+        # post. A post link anywhere else on the page can be any post in the
+        # feed, and words like "shared" appear in ordinary feed text.
+        path = _linkedin_path(url_now) or ""
+        if path.startswith(("/feed/update/", "/posts/")):
             post_url = url_now
 
-        if not post_url:
-            anchors = page.locator('a[href*="/feed/update/"]')
-            if anchors.count() > 0:
-                href = anchors.first.get_attribute("href")
+        success_toast = page.locator(
+            '[role="status"]:has-text("Post successful"), '
+            '[role="alert"]:has-text("Post successful"), '
+            '[role="status"]:has-text("Your post is now live")'
+        )
+        toast_shown = success_toast.count() > 0
+
+        if not post_url and toast_shown:
+            toast_link = success_toast.first.locator('a[href*="/feed/update/"]')
+            if toast_link.count() > 0:
+                href = toast_link.first.get_attribute("href")
                 if href:
                     post_url = href if href.startswith("http") else f"https://www.linkedin.com{href}"
 
-        if post_url or success_toast.count() > 0:
+        if post_url or toast_shown:
             # Passive Lead Scout Sweep
             try:
                 if self.settings.get("lead_scout", {}).get("enabled", True):
