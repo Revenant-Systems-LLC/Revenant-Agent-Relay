@@ -49,6 +49,8 @@ class FakePage:
         self.elements = elements or {}
         self.goto_error = goto_error
         self.keyboard = MagicMock()
+        self.closed = False
+        self.screenshots = []
 
     def goto(self, url, **kwargs):
         if self.goto_error:
@@ -69,7 +71,9 @@ class FakePage:
         return self.elements.get(selector, FakeLocator())
 
     def screenshot(self, path, **kwargs):
-        pass
+        if self.closed:
+            raise RuntimeError("Target page, context or browser has been closed")
+        self.screenshots.append(path)
 
 
 def _fake_sync_playwright(page):
@@ -80,6 +84,7 @@ def _fake_sync_playwright(page):
             return p
 
         def __exit__(self, *exc_info):
+            page.closed = True  # sync_playwright() teardown closes every page
             return False
 
     return _Manager
@@ -172,3 +177,23 @@ def test_page_load_timeout_stays_a_transient_network_error(monkeypatch, tmp_path
     assert result["success"] is False
     assert result["error_type"] == "NETWORK_ERROR"
     assert result["transient"] is True
+
+
+@pytest.mark.parametrize("error", [
+    tiktok.PlaywrightTimeoutError("Locator.click: Timeout 5000ms exceeded."),
+    RuntimeError("Target crashed"),
+])
+def test_failure_screenshot_is_taken_before_playwright_shuts_down(monkeypatch, tmp_path, error):
+    page = FakePage(
+        visible_text="Upload video",
+        elements={
+            'input[type="file"]': FakeLocator(count=1),
+            'div[contenteditable="true"][role="textbox"]': FakeLocator(count=1, error=error),
+        },
+    )
+
+    result = _post(monkeypatch, tmp_path, page)
+
+    assert result["success"] is False
+    assert result["screenshot_path"] is not None
+    assert page.screenshots == [result["screenshot_path"]]

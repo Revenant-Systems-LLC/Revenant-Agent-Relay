@@ -150,38 +150,44 @@ class TikTokAdapter:
                 context = browser.new_context()
                 page = context.new_page()
 
-                login_result = self._login_if_needed(page)
-                if login_result:
-                    login_result["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**login_result)
+                try:
+                    login_result = self._login_if_needed(page)
+                    if login_result:
+                        login_result["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**login_result)
 
-                upload_result = self._upload_media(page, str(resolved))
-                if upload_result:
-                    upload_result["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**upload_result)
+                    upload_result = self._upload_media(page, str(resolved))
+                    if upload_result:
+                        upload_result["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**upload_result)
 
-                caption_result = self._fill_caption(page, caption)
-                if caption_result:
-                    caption_result["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**caption_result)
+                    caption_result = self._fill_caption(page, caption)
+                    if caption_result:
+                        caption_result["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**caption_result)
 
-                success_url = self._detect_post_success(page)
-                if success_url:
-                    return _result(True, post_url=success_url)
+                    success_url = self._detect_post_success(page)
+                    if success_url:
+                        return _result(True, post_url=success_url)
 
-                screenshot_path = self._capture_screenshot(page)
-                return _result(
-                    False,
-                    error_type="PLATFORM_AUTOMATION_ERROR",
-                    detected="Upload/caption preparation completed, but final publish was not auto-confirmed safely.",
-                    raw="publish_not_confirmed",
-                    screenshot_path=screenshot_path,
-                )
+                    screenshot_path = self._capture_screenshot(page)
+                    return _result(
+                        False,
+                        error_type="PLATFORM_AUTOMATION_ERROR",
+                        detected="Upload/caption preparation completed, but final publish was not auto-confirmed safely.",
+                        raw="publish_not_confirmed",
+                        screenshot_path=screenshot_path,
+                    )
+                except Exception:
+                    # Capture now, while the browser is still alive. The handlers
+                    # below run after sync_playwright() has torn everything
+                    # down, where page.screenshot() can only fail.
+                    screenshot_path = self._capture_screenshot(page)
+                    raise
         except PlaywrightTimeoutError as e:
             # Page loads report their own timeouts (see _open), so this one
             # came from waiting on an element: the UI or a selector changed,
             # and a same-run retry would only hide that.
-            screenshot_path = self._capture_screenshot(page)
             return _result(
                 False,
                 error_type="PLATFORM_AUTOMATION_ERROR",
@@ -190,7 +196,6 @@ class TikTokAdapter:
                 screenshot_path=screenshot_path,
             )
         except Exception as e:
-            screenshot_path = self._capture_screenshot(page)
             kind = self._classify_error(str(e))
             return _result(False, error_type=kind, detected=str(e), raw=repr(e), screenshot_path=screenshot_path)
         finally:
