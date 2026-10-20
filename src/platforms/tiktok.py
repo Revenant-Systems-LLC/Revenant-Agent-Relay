@@ -37,6 +37,22 @@ _ERROR_FIX = {
 
 _TRANSIENT_TYPES = {"NETWORK_ERROR"}
 
+# Matched against the text the page shows, not its HTML: page source can carry
+# words like "verify" and "captcha" in scripts on ordinary pages, which would
+# flag a logged-in session as challenged. Bare words such as "verify" are left
+# out because normal UI copy uses them too.
+_CHALLENGE_PHRASES = (
+    "captcha",
+    "verify to continue",
+    "drag the slider",
+    "drag the puzzle",
+    "security check",
+    "verification code",
+    "code sent",
+    "2-step verification",
+    "two-step verification",
+)
+
 
 def _resolve_media(media_path):
     p = Path(media_path)
@@ -83,6 +99,15 @@ class TikTokAdapter:
                 f"{self.username_env}, {self.password_env}"
             )
 
+        # Raise here rather than failing every post: with automation off the
+        # adapter can only fail, and an init error is what lets load_adapter()
+        # treat TikTok as unavailable.
+        if not self.enable_automation:
+            raise RuntimeError(
+                "TikTok automation is disabled. "
+                f"Set {self.enable_automation_env}=true to run browser flow."
+            )
+
         mode = (settings or {}).get("mode", "dev")
         mode_settings = (settings or {}).get(f"{mode}_mode", {})
         self.headless = mode_settings.get("headless", mode == "scheduled")
@@ -114,14 +139,6 @@ class TikTokAdapter:
             )
             
         resolved = media_files[0]
-
-        if not self.enable_automation:
-            return _result(
-                False,
-                error_type="PLATFORM_AUTOMATION_ERROR",
-                detected="TikTok automation is disabled. Set RR_TIKTOK_ENABLE_AUTOMATION=true to run browser flow.",
-                raw="automation_disabled",
-            )
 
         browser = None
         context = None
@@ -161,11 +178,14 @@ class TikTokAdapter:
                     screenshot_path=screenshot_path,
                 )
         except PlaywrightTimeoutError as e:
+            # Page loads report their own timeouts (see _open), so this one
+            # came from waiting on an element: the UI or a selector changed,
+            # and a same-run retry would only hide that.
             screenshot_path = self._capture_screenshot(page)
             return _result(
                 False,
-                error_type="NETWORK_ERROR",
-                detected="Timeout while navigating TikTok pages.",
+                error_type="PLATFORM_AUTOMATION_ERROR",
+                detected="Timed out waiting for a TikTok page element; the UI or selectors may have changed.",
                 raw=repr(e),
                 screenshot_path=screenshot_path,
             )
@@ -185,8 +205,28 @@ class TikTokAdapter:
                 except Exception:
                     logger.debug("Failed to close browser during cleanup", exc_info=True)
 
+    def _open(self, page, url):
+        """Load a TikTok page, reporting a load timeout as NETWORK_ERROR.
+
+        The page never arriving is the one timeout that points at the
+        network; an element that never appears is UI breakage instead.
+        """
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except PlaywrightTimeoutError as e:
+            return {
+                "success": False,
+                "error_type": "NETWORK_ERROR",
+                "detected": f"Timeout while loading {url}.",
+                "raw": repr(e),
+                "post_url": None,
+            }
+        return None
+
     def _login_if_needed(self, page):
-        page.goto("https://www.tiktok.com/upload", wait_until="domcontentloaded", timeout=60000)
+        load_error = self._open(page, "https://www.tiktok.com/upload")
+        if load_error:
+            return load_error
         page.wait_for_timeout(1500)
         current_url = page.url.lower()
 
@@ -223,11 +263,10 @@ class TikTokAdapter:
                 page.keyboard.press("Enter")
                 page.wait_for_timeout(4000)
 
-        content = page.content().lower()
+        visible_text = page.locator("body").inner_text().lower()
         url_now = page.url.lower()
 
-        challenge_markers = ["captcha", "verify", "two-step", "2-step", "security check", "qr code", "code sent"]
-        if any(m in content for m in challenge_markers):
+        if any(m in visible_text for m in _CHALLENGE_PHRASES):
             return {
                 "success": False,
                 "error_type": "AUTH_ERROR",
@@ -248,7 +287,9 @@ class TikTokAdapter:
         return None
 
     def _upload_media(self, page, media_file):
-        page.goto("https://www.tiktok.com/upload", wait_until="domcontentloaded", timeout=60000)
+        load_error = self._open(page, "https://www.tiktok.com/upload")
+        if load_error:
+            return load_error
         page.wait_for_timeout(2500)
 
         file_inputs = page.locator('input[type="file"]')

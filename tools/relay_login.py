@@ -7,9 +7,9 @@ Every run after that is already authenticated.
 This exists so no adapter ever types a password. A human does the login once,
 including any captcha or 2FA, and the bot inherits the result.
 
-    py -3.11 tools\relay_login.py reddit          # log in
-    py -3.11 tools\relay_login.py reddit --check  # is the session still good?
-    py -3.11 tools\relay_login.py reddit --reset  # wipe and start over
+    py -3.11 tools/relay_login.py reddit          # log in
+    py -3.11 tools/relay_login.py reddit --check  # is the session still good?
+    py -3.11 tools/relay_login.py reddit --reset  # wipe and start over
 
 Close the browser window when you are done. The script waits for it.
 """
@@ -45,7 +45,7 @@ def _usage() -> int:
 def check(platform: str) -> int:
     cfg = PLATFORMS[platform]
     if not has_profile(platform):
-        print(f"No profile yet for {platform}. Run: py -3.11 tools\relay_login.py {platform}")
+        print(f"No profile yet for {platform}. Run: py -3.11 tools/relay_login.py {platform}")
         return 1
 
     from playwright.sync_api import sync_playwright
@@ -62,7 +62,7 @@ def check(platform: str) -> int:
     if ok:
         print(f"{platform}: session is live.")
         return 0
-    print(f"{platform}: NOT logged in. Run: py -3.11 tools\relay_login.py {platform}")
+    print(f"{platform}: NOT logged in. Run: py -3.11 tools/relay_login.py {platform}")
     return 1
 
 

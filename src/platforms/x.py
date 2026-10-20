@@ -40,6 +40,9 @@ _ERROR_FIX = {
 
 _TRANSIENT_TYPES = {"NETWORK_ERROR"}
 
+# Confirmation note for an action block or rate limit shown after submitting.
+_RATE_LIMIT_NOTE = "x_rate_limit_or_action_block"
+
 
 def _resolve_media(media_path):
     p = Path(media_path)
@@ -162,6 +165,14 @@ class XAdapter:
                 success_url, confirmation_note, uncertain = self._detect_post_confirmation(page)
                 if uncertain:
                     screenshot = self._capture_screenshot(page)
+                    if confirmation_note == _RATE_LIMIT_NOTE:
+                        return _result(
+                            False,
+                            error_type="RATE_LIMIT_ERROR",
+                            detected="X blocked the post or reported a rate limit after submit.",
+                            raw=confirmation_note,
+                            screenshot_path=screenshot,
+                        )
                     return _result(
                         False,
                         error_type="PLATFORM_AUTOMATION_ERROR",
@@ -441,7 +452,7 @@ class XAdapter:
 
         html = page.content().lower()
         if "action blocked" in html or "rate limit" in html or "try again later" in html:
-            return None, "x_rate_limit_or_action_block", True
+            return None, _RATE_LIMIT_NOTE, True
 
         return None, "no_reliable_confirmation", True
 

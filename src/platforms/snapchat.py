@@ -400,6 +400,7 @@ class SnapchatAdapter:
             page.get_by_role("button", name="Save"),
             page.get_by_role("button", name="Review and Publish"),
         ]
+        url_before_submit = page.url
         clicked_submit = False
         for btn in publish_like:
             if btn.count() > 0:
@@ -418,7 +419,7 @@ class SnapchatAdapter:
 
         page.wait_for_timeout(4000)
 
-        confirmation = self._detect_ads_confirmation(page)
+        confirmation = self._detect_ads_confirmation(page, url_before_submit)
         if confirmation:
             return {
                 "success": True,
@@ -432,7 +433,7 @@ class SnapchatAdapter:
             "success": False,
             "error_type": "PLATFORM_AUTOMATION_ERROR",
             "detected": "Snapchat publish/save confirmation was ambiguous.",
-            "raw": "No reliable Snapchat confirmation signal found after submit action (missing entity ID URL/link, specific success toast/dialog, confirmation/review page transition, or created-row match).",
+            "raw": "No reliable Snapchat confirmation signal found after submit action (missing entity ID URL/link, specific success toast/dialog, confirmation page transition, or created-row match).",
             "post_url": None,
         }
 
@@ -451,13 +452,20 @@ class SnapchatAdapter:
             return False
         return any(ch.isdigit() for ch in tail) or "-" in tail or "_" in tail
 
-    def _detect_ads_confirmation(self, page):
+    def _detect_ads_confirmation(self, page, url_before_submit):
         current_url = page.url or ""
         current_url_lower = current_url.lower()
+        # A URL the page was already on before the click says nothing about
+        # the click, so URL signals count only after a navigation.
+        navigated = current_url != (url_before_submit or "")
 
         # 1) Created entity URL/ID capture (must include concrete ID/token).
         entity_url_markers = ["/campaigns/", "/ads/", "/ad-squad/"]
-        if any(marker in current_url_lower for marker in entity_url_markers) and self._url_has_entity_id(current_url):
+        if (
+            navigated
+            and any(marker in current_url_lower for marker in entity_url_markers)
+            and self._url_has_entity_id(current_url)
+        ):
             return {
                 "detected": "Snapchat navigated to a created campaign/ad entity URL after submit.",
                 "raw": "entity_url_with_id_detected",
@@ -476,12 +484,13 @@ class SnapchatAdapter:
                         "post_url": normalized,
                     }
 
-        # 2) Snapchat-specific confirmation toasts/dialogs.
+        # 2) Snapchat-specific confirmation toasts/dialogs. A "Review your
+        # campaign" dialog asks for a review before publishing; it confirms
+        # nothing, so it is not one of them.
         success_toast = page.locator(
             '[role="alert"]:has-text("Campaign created"), '
             '[role="alert"]:has-text("Draft created"), '
-            '[role="dialog"]:has-text("Campaign created"), '
-            '[role="dialog"]:has-text("Review your campaign")'
+            '[role="dialog"]:has-text("Campaign created")'
         )
         if success_toast.count() > 0:
             return {
@@ -490,11 +499,13 @@ class SnapchatAdapter:
                 "post_url": current_url,
             }
 
-        # 3) Confirmation/review/success route transition after submit.
-        # Intentionally excludes generic '/draft' by itself.
-        if any(seg in current_url_lower for seg in ["/confirm", "/confirmation", "/review", "/success"]):
+        # 3) Confirmation/success route transition after submit.
+        # Intentionally excludes generic '/draft' by itself, and '/review':
+        # the review step comes before publishing, and "Review and Publish"
+        # lands there whether or not anything was published.
+        if navigated and any(seg in current_url_lower for seg in ["/confirm", "/confirmation", "/success"]):
             return {
-                "detected": "Snapchat navigated to a confirmation/review/success route after submit.",
+                "detected": "Snapchat navigated to a confirmation/success route after submit.",
                 "raw": "confirmation_route_detected",
                 "post_url": current_url,
             }

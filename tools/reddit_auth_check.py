@@ -5,7 +5,7 @@ adapter builds, and makes one read-only call (`reddit.user.me()`). Prints the
 exact exception class and HTTP body on failure, because "it didn't work" is
 what has cost this project months.
 
-    py -3.11 tools\reddit_auth_check.py
+    py -3.11 tools/reddit_auth_check.py
 """
 
 from __future__ import annotations

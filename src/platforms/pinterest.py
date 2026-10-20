@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,18 @@ def _resolve_media(media_path):
     if p.is_absolute():
         return p
     return ROOT / p
+
+
+def _is_post_login_url(url):
+    """True once Pinterest has navigated off its login page.
+
+    A glob like "**pinterest.com/**" is not enough: it also matches /login/
+    itself, so wait_for_url() would return before the login has finished.
+    """
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    on_pinterest = host == "pinterest.com" or host.endswith(".pinterest.com")
+    return on_pinterest and not parsed.path.lower().startswith("/login")
 
 
 def _result(success, post_url=None, error_type=None, detected=None, raw=None, screenshot_path=None):
@@ -129,13 +142,19 @@ class PinterestAdapter:
                 if self.dev_mode:
                     print("[PinterestAdapter] Running in dev mode with visible browser.")
 
-                self._login(page)
-                post_url = self._create_pin(page, media_files[0], title, description, destination_url)
+                try:
+                    self._login(page)
+                    post_url = self._create_pin(page, media_files[0], title, description, destination_url)
+                except Exception:
+                    # Capture now, while the browser is still alive. The handler
+                    # below runs after sync_playwright() has torn everything
+                    # down, where page.screenshot() can only fail.
+                    screenshot_path = self._save_failure_screenshot(page)
+                    raise
 
                 return _result(True, post_url=post_url)
         except Exception as e:
             kind = self._classify_error(e)
-            screenshot_path = self._save_failure_screenshot(page)
             return _result(False, error_type=kind, detected=str(e), raw=repr(e), screenshot_path=screenshot_path)
         finally:
             if context is not None:
@@ -154,7 +173,10 @@ class PinterestAdapter:
         page.locator('input[name="id"]').first.fill(self.username)
         page.locator('input[name="password"]').first.fill(self.password)
         page.get_by_role("button", name="Log in").first.click()
-        page.wait_for_url("**pinterest.com/**", timeout=45000)
+        try:
+            page.wait_for_url(_is_post_login_url, timeout=45000)
+        except PlaywrightTimeoutError as exc:
+            raise RuntimeError(f"Pinterest login did not complete; still at {page.url}") from exc
 
     def _create_pin(self, page, media_file, title, description, destination_url):
         page.goto("https://www.pinterest.com/pin-creation-tool/", wait_until="domcontentloaded", timeout=60000)
