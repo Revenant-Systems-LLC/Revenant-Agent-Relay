@@ -25,6 +25,7 @@ _ERROR_CAUSE = {
     "PLATFORM_AUTOMATION_ERROR": "TikTok UI flow changed or reliable publish confirmation was not possible.",
     "NETWORK_ERROR": "Transient network or timeout failure while loading TikTok.",
     "RATE_LIMIT_ERROR": "TikTok temporarily limited posting actions.",
+    "UPLOAD_PREP_ONLY": "The TikTok adapter has no publish step: it uploads the video and fills the caption, then stops. Nothing was posted.",
 }
 
 _ERROR_FIX = {
@@ -33,6 +34,7 @@ _ERROR_FIX = {
     "PLATFORM_AUTOMATION_ERROR": "Re-verify TikTok selectors and flow, then retry once manually validated.",
     "NETWORK_ERROR": "Retry once; likely transient connectivity or page timeout.",
     "RATE_LIMIT_ERROR": "Wait before retrying and reduce posting frequency.",
+    "UPLOAD_PREP_ONLY": "Post on TikTok by hand, or add a publish step with a verified confirmation to the adapter.",
 }
 
 _TRANSIENT_TYPES = {"NETWORK_ERROR"}
@@ -166,16 +168,14 @@ class TikTokAdapter:
                         caption_result["screenshot_path"] = self._capture_screenshot(page)
                         return _result(**caption_result)
 
-                    success_url = self._detect_post_success(page)
-                    if success_url:
-                        return _result(True, post_url=success_url)
-
+                    # The flow ends here: nothing clicks Post, so nothing on
+                    # the page can confirm that this video was published.
                     screenshot_path = self._capture_screenshot(page)
                     return _result(
                         False,
-                        error_type="PLATFORM_AUTOMATION_ERROR",
-                        detected="Upload/caption preparation completed, but final publish was not auto-confirmed safely.",
-                        raw="publish_not_confirmed",
+                        error_type="UPLOAD_PREP_ONLY",
+                        detected="TikTok upload prepared (video uploaded, caption filled), but the adapter has no publish step; nothing was posted.",
+                        raw="upload_prep_only",
                         screenshot_path=screenshot_path,
                     )
                 except Exception:
@@ -344,16 +344,6 @@ class TikTokAdapter:
             "raw": "missing_caption_field",
             "post_url": None,
         }
-
-    def _detect_post_success(self, page):
-        url = page.url
-        if "/@" in url and "/video/" in url:
-            return url
-
-        html = page.content().lower()
-        if "posted" in html and "/video/" in html:
-            return url if url.startswith("https://www.tiktok.com/") else None
-        return None
 
     def _classify_error(self, msg):
         m = (msg or "").lower()

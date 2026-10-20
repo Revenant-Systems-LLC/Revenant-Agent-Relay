@@ -197,3 +197,28 @@ def test_failure_screenshot_is_taken_before_playwright_shuts_down(monkeypatch, t
     assert result["success"] is False
     assert result["screenshot_path"] is not None
     assert page.screenshots == [result["screenshot_path"]]
+
+
+@pytest.mark.parametrize("url, html", [
+    # The two old success signals. This flow never clicks Post, so neither
+    # can mean that our video was published.
+    (UPLOAD_URL, '<p>You posted this</p><a href="/@someone/video/7300000000000000000">'),
+    ("https://www.tiktok.com/@someone/video/7300000000000000000", ""),
+])
+def test_prepared_upload_is_never_reported_as_a_post(monkeypatch, tmp_path, url, html):
+    page = FakePage(
+        url=url,
+        html=html,
+        visible_text="Upload video",
+        elements={
+            'input[type="file"]': FakeLocator(count=1),
+            'div[contenteditable="true"][role="textbox"]': FakeLocator(count=1),
+        },
+    )
+
+    result = _post(monkeypatch, tmp_path, page)
+
+    assert result["success"] is False
+    assert result["error_type"] == "UPLOAD_PREP_ONLY"
+    assert result["post_url"] is None
+    assert result["transient"] is False

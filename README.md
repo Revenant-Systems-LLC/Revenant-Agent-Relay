@@ -85,6 +85,8 @@ Required for TikTok adapter initialization:
 - `RR_TIKTOK_PASSWORD`
 - Optional safety gate: `RR_TIKTOK_ENABLE_AUTOMATION` (default disabled; set to `true` to attempt browser automation bootstrap)
 
+The adapter is upload prep only. It logs in, uploads the video and fills the caption, then stops without clicking Post. Every attempt is reported as `UPLOAD_PREP_ONLY` and never counts as a post.
+
 ### Snapchat
 Required for Snapchat adapter initialization:
 - `RR_SNAPCHAT_USERNAME`
