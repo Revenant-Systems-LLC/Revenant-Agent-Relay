@@ -135,43 +135,51 @@ class LinkedInAdapter:
         browser = None
         context = None
         page = None
+        screenshot_path = None
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=self.headless)
                 context = browser.new_context()
                 page = context.new_page()
 
-                login_gate = self._ensure_authenticated(page)
-                if login_gate:
-                    login_gate["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**login_gate)
+                try:
+                    login_gate = self._ensure_authenticated(page)
+                    if login_gate:
+                        login_gate["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**login_gate)
 
-                nav_gate = self._navigate_to_post_surface(page)
-                if nav_gate:
-                    nav_gate["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**nav_gate)
+                    nav_gate = self._navigate_to_post_surface(page)
+                    if nav_gate:
+                        nav_gate["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**nav_gate)
 
-                compose_gate = self._open_composer(page)
-                if compose_gate:
-                    compose_gate["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**compose_gate)
+                    compose_gate = self._open_composer(page)
+                    if compose_gate:
+                        compose_gate["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**compose_gate)
 
-                caption_gate = self._fill_caption(page, caption)
-                if caption_gate:
-                    caption_gate["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**caption_gate)
+                    caption_gate = self._fill_caption(page, caption)
+                    if caption_gate:
+                        caption_gate["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**caption_gate)
 
-                media_gate = self._attach_media_if_any(page, media_files)
-                if media_gate:
-                    media_gate["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**media_gate)
+                    media_gate = self._attach_media_if_any(page, media_files)
+                    if media_gate:
+                        media_gate["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**media_gate)
 
-                publish_gate = self._publish_if_clear(page)
-                if publish_gate:
-                    publish_gate["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**publish_gate)
+                    publish_gate = self._publish_if_clear(page)
+                    if publish_gate:
+                        publish_gate["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**publish_gate)
 
-                return self._confirm_publish(page)
+                    return self._confirm_publish(page)
+                except Exception:
+                    # Capture now, while the browser is still alive. The handlers
+                    # below run after sync_playwright() has torn everything
+                    # down, where page.screenshot() can only fail.
+                    screenshot_path = self._capture_screenshot(page)
+                    raise
 
         except PlaywrightTimeoutError as e:
             return _result(
@@ -179,7 +187,7 @@ class LinkedInAdapter:
                 error_type="NETWORK_ERROR",
                 detected="Timeout while navigating LinkedIn pages.",
                 raw=repr(e),
-                screenshot_path=self._capture_screenshot(page),
+                screenshot_path=screenshot_path,
             )
         except Exception as e:
             error_type = self._classify_error(str(e))
@@ -188,7 +196,7 @@ class LinkedInAdapter:
                 error_type=error_type,
                 detected=str(e),
                 raw=repr(e),
-                screenshot_path=self._capture_screenshot(page),
+                screenshot_path=screenshot_path,
             )
         finally:
             if context is not None:

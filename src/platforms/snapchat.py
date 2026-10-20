@@ -121,39 +121,47 @@ class SnapchatAdapter:
         browser = None
         context = None
         page = None
+        screenshot_path = None
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=self.headless)
                 context = browser.new_context()
                 page = context.new_page()
 
-                blocker = self._open_and_auth(page)
-                if blocker:
-                    blocker["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**blocker)
+                try:
+                    blocker = self._open_and_auth(page)
+                    if blocker:
+                        blocker["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**blocker)
 
-                if ext in _IMAGE_EXTS:
-                    return _result(
-                        False,
-                        error_type="PLATFORM_AUTOMATION_ERROR",
-                        detected="Snapchat web ad flow in this adapter is implemented as video-first; static image upload path is not reliably automatable here.",
-                        raw=f"image_media_not_attempted:{ext}",
-                        screenshot_path=self._capture_screenshot(page),
-                    )
+                    if ext in _IMAGE_EXTS:
+                        return _result(
+                            False,
+                            error_type="PLATFORM_AUTOMATION_ERROR",
+                            detected="Snapchat web ad flow in this adapter is implemented as video-first; static image upload path is not reliably automatable here.",
+                            raw=f"image_media_not_attempted:{ext}",
+                            screenshot_path=self._capture_screenshot(page),
+                        )
 
-                outcome = self._attempt_ads_draft_flow(page, str(resolved), caption)
-                if outcome.get("success"):
+                    outcome = self._attempt_ads_draft_flow(page, str(resolved), caption)
+                    if outcome.get("success"):
+                        return _result(**outcome)
+
+                    outcome["screenshot_path"] = self._capture_screenshot(page)
                     return _result(**outcome)
-
-                outcome["screenshot_path"] = self._capture_screenshot(page)
-                return _result(**outcome)
+                except Exception:
+                    # Capture now, while the browser is still alive. The handlers
+                    # below run after sync_playwright() has torn everything
+                    # down, where page.screenshot() can only fail.
+                    screenshot_path = self._capture_screenshot(page)
+                    raise
         except PlaywrightTimeoutError as e:
             return _result(
                 False,
                 error_type="NETWORK_ERROR",
                 detected="Timeout while navigating Snapchat web pages.",
                 raw=repr(e),
-                screenshot_path=self._capture_screenshot(page),
+                screenshot_path=screenshot_path,
             )
         except Exception as e:
             kind = self._classify_error(str(e))
@@ -162,7 +170,7 @@ class SnapchatAdapter:
                 error_type=kind,
                 detected=str(e),
                 raw=repr(e),
-                screenshot_path=self._capture_screenshot(page),
+                screenshot_path=screenshot_path,
             )
         finally:
             if context is not None:
@@ -433,7 +441,7 @@ class SnapchatAdapter:
             "success": False,
             "error_type": "PLATFORM_AUTOMATION_ERROR",
             "detected": "Snapchat publish/save confirmation was ambiguous.",
-            "raw": "No reliable Snapchat confirmation signal found after submit action (missing entity ID URL/link, specific success toast/dialog, confirmation page transition, or created-row match).",
+            "raw": "No reliable Snapchat confirmation signal found after submit action (no navigation to an entity ID URL or confirmation route, and no specific success toast/dialog).",
             "post_url": None,
         }
 
@@ -460,6 +468,8 @@ class SnapchatAdapter:
         navigated = current_url != (url_before_submit or "")
 
         # 1) Created entity URL/ID capture (must include concrete ID/token).
+        # Only the page's own URL counts. A link to an entity proves nothing:
+        # Ads Manager links campaigns that already exist, and each has an ID.
         entity_url_markers = ["/campaigns/", "/ads/", "/ad-squad/"]
         if (
             navigated
@@ -471,18 +481,6 @@ class SnapchatAdapter:
                 "raw": "entity_url_with_id_detected",
                 "post_url": current_url,
             }
-
-        entity_link = page.locator('a[href*="/campaigns/"], a[href*="/ads/"], a[href*="/ad-squad/"]')
-        if entity_link.count() > 0:
-            href = entity_link.first.get_attribute("href")
-            if href:
-                normalized = href if href.startswith("http") else f"https://ads.snapchat.com{href}"
-                if self._url_has_entity_id(normalized):
-                    return {
-                        "detected": "Snapchat exposed a created campaign/ad entity link after submit.",
-                        "raw": "entity_link_with_id_detected",
-                        "post_url": normalized,
-                    }
 
         # 2) Snapchat-specific confirmation toasts/dialogs. A "Review your
         # campaign" dialog asks for a review before publishing; it confirms

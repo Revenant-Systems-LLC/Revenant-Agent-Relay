@@ -2,6 +2,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -130,82 +131,91 @@ class XAdapter:
         browser = None
         context = None
         page = None
+        screenshot_path = None
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=self.headless)
                 context = browser.new_context()
                 page = context.new_page()
 
-                login_error = self._ensure_logged_in(page)
-                if login_error:
-                    login_error["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**login_error)
+                try:
+                    login_error = self._ensure_logged_in(page)
+                    if login_error:
+                        login_error["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**login_error)
 
-                compose_error = self._open_compose(page)
-                if compose_error:
-                    compose_error["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**compose_error)
+                    compose_error = self._open_compose(page)
+                    if compose_error:
+                        compose_error["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**compose_error)
 
-                fill_error = self._fill_caption(page, caption)
-                if fill_error:
-                    fill_error["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**fill_error)
+                    fill_error = self._fill_caption(page, caption)
+                    if fill_error:
+                        fill_error["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**fill_error)
 
-                if media_files:
-                    media_error = self._attach_media(page, media_files)
-                    if media_error:
-                        media_error["screenshot_path"] = self._capture_screenshot(page)
-                        return _result(**media_error)
+                    if media_files:
+                        media_error = self._attach_media(page, media_files)
+                        if media_error:
+                            media_error["screenshot_path"] = self._capture_screenshot(page)
+                            return _result(**media_error)
 
-                submit_error = self._submit_post(page)
-                if submit_error:
-                    submit_error["screenshot_path"] = self._capture_screenshot(page)
-                    return _result(**submit_error)
+                    url_before_submit = page.url
+                    submit_error = self._submit_post(page)
+                    if submit_error:
+                        submit_error["screenshot_path"] = self._capture_screenshot(page)
+                        return _result(**submit_error)
 
-                success_url, confirmation_note, uncertain = self._detect_post_confirmation(page)
-                if uncertain:
-                    screenshot = self._capture_screenshot(page)
-                    if confirmation_note == _RATE_LIMIT_NOTE:
+                    success_url, confirmation_note, uncertain = self._detect_post_confirmation(page, url_before_submit)
+                    if uncertain:
+                        screenshot = self._capture_screenshot(page)
+                        if confirmation_note == _RATE_LIMIT_NOTE:
+                            return _result(
+                                False,
+                                error_type="RATE_LIMIT_ERROR",
+                                detected="X blocked the post or reported a rate limit after submit.",
+                                raw=confirmation_note,
+                                screenshot_path=screenshot,
+                            )
                         return _result(
                             False,
-                            error_type="RATE_LIMIT_ERROR",
-                            detected="X blocked the post or reported a rate limit after submit.",
+                            error_type="PLATFORM_AUTOMATION_ERROR",
+                            detected="Unable to reliably confirm X post success.",
                             raw=confirmation_note,
                             screenshot_path=screenshot,
                         )
+
+                    # Passive Lead Scout Sweep
+                    try:
+                        if self.settings.get("lead_scout", {}).get("enabled", True):
+                            from ..scout_logger import log_leads
+                            leads = self.scout_leads(page, self.settings)
+                            log_leads(leads)
+                    except Exception as e:
+                        print(f"[X Scout] Error running Lead Scout: {e}")
+
+                    if success_url:
+                        return _result(True, post_url=success_url)
+
                     return _result(
-                        False,
-                        error_type="PLATFORM_AUTOMATION_ERROR",
-                        detected="Unable to reliably confirm X post success.",
+                        True,
+                        post_url=None,
+                        detected="X UI indicated post completion, but no canonical post URL was captured.",
                         raw=confirmation_note,
-                        screenshot_path=screenshot,
                     )
-
-                # Passive Lead Scout Sweep
-                try:
-                    if self.settings.get("lead_scout", {}).get("enabled", True):
-                        from ..scout_logger import log_leads
-                        leads = self.scout_leads(page, self.settings)
-                        log_leads(leads)
-                except Exception as e:
-                    print(f"[X Scout] Error running Lead Scout: {e}")
-
-                if success_url:
-                    return _result(True, post_url=success_url)
-
-                return _result(
-                    True,
-                    post_url=None,
-                    detected="X UI indicated post completion, but no canonical post URL was captured.",
-                    raw=confirmation_note,
-                )
+                except Exception:
+                    # Capture now, while the browser is still alive. The handlers
+                    # below run after sync_playwright() has torn everything
+                    # down, where page.screenshot() can only fail.
+                    screenshot_path = self._capture_screenshot(page)
+                    raise
         except PlaywrightTimeoutError as exc:
             return _result(
                 False,
                 error_type="NETWORK_ERROR",
                 detected="Timeout while interacting with X pages.",
                 raw=repr(exc),
-                screenshot_path=self._capture_screenshot(page),
+                screenshot_path=screenshot_path,
             )
         except Exception as exc:
             error_type = self._classify_exception(exc)
@@ -214,7 +224,7 @@ class XAdapter:
                 error_type=error_type,
                 detected=str(exc),
                 raw=repr(exc),
-                screenshot_path=self._capture_screenshot(page),
+                screenshot_path=screenshot_path,
             )
         finally:
             if context is not None:
@@ -436,18 +446,23 @@ class XAdapter:
             }
         return None
 
-    def _detect_post_confirmation(self, page):
-        # Prefer explicit URL from status links if present.
-        status_link = page.locator('a[href*="/status/"]').first
-        if status_link.count() > 0:
-            href = status_link.get_attribute("href")
-            if href:
-                if href.startswith("http"):
-                    return href, "status_link_detected", False
-                return f"https://x.com{href}", "status_link_detected", False
+    def _detect_post_confirmation(self, page, url_before_submit):
+        # Only evidence tied to this submit counts. The composer closes onto
+        # the home timeline, so a /status/ link elsewhere on the page is
+        # usually someone else's post and says nothing about ours.
+        if page.url != url_before_submit and self._is_own_status_url(page.url):
+            return page.url, "own_status_url_after_submit", False
 
-        explicit_confirmation = page.locator('[role="status"]:has-text("Your post was sent"), [data-testid="toast"]:has-text("Your post was sent")')
-        if explicit_confirmation.count() > 0:
+        send_toast = page.locator('[role="status"]:has-text("Your post was sent"), [data-testid="toast"]:has-text("Your post was sent")')
+        if send_toast.count() > 0:
+            # The toast's "View" link is the post that was just sent.
+            toast_link = send_toast.first.locator('a[href*="/status/"]')
+            if toast_link.count() > 0:
+                href = toast_link.first.get_attribute("href")
+                if href:
+                    if href.startswith("http"):
+                        return href, "send_toast_link_detected", False
+                    return f"https://x.com{href}", "send_toast_link_detected", False
             return None, "explicit_send_toast_detected", False
 
         html = page.content().lower()
@@ -469,6 +484,20 @@ class XAdapter:
         if "account locked" in html or "temporarily restricted" in html:
             return self._auth_error("X account locked or temporarily restricted.", "account_locked")
         return None
+
+    def _is_own_status_url(self, url):
+        """True for a status URL under this account's @handle.
+
+        The handle is RR_X_USERNAME, so when that is an email or phone number
+        nothing matches here and confirmation rests on the send toast.
+        """
+        parsed = urlparse(url or "")
+        host = (parsed.hostname or "").lower()
+        if host not in ("x.com", "twitter.com") and not host.endswith((".x.com", ".twitter.com")):
+            return False
+        parts = [part for part in parsed.path.split("/") if part]
+        handle = self.username.strip().lstrip("@").lower()
+        return len(parts) >= 3 and parts[0].lower() == handle and parts[1] == "status" and parts[2].isdigit()
 
     def _is_logged_in(self, page):
         if "x.com/home" in page.url.lower() or "x.com/compose" in page.url.lower():

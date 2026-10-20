@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from src.platforms import linkedin
@@ -42,6 +44,8 @@ class FakePage:
         self.html = html
         self.feed_links = feed_links
         self.toast = toast
+        self.closed = False
+        self.screenshots = []
 
     def content(self):
         return self.html
@@ -54,7 +58,23 @@ class FakePage:
         return FakeLocator()
 
     def screenshot(self, path, **kwargs):
-        pass
+        if self.closed:
+            raise RuntimeError("Target page, context or browser has been closed")
+        self.screenshots.append(path)
+
+
+def _fake_sync_playwright(page):
+    class _Manager:
+        def __enter__(self):
+            p = MagicMock()
+            p.chromium.launch.return_value.new_context.return_value.new_page.return_value = page
+            return p
+
+        def __exit__(self, *exc_info):
+            page.closed = True  # sync_playwright() teardown closes every page
+            return False
+
+    return _Manager
 
 
 def _adapter(monkeypatch, tmp_path):
@@ -127,3 +147,24 @@ def test_rate_limit_is_reported_when_nothing_confirms(monkeypatch, tmp_path):
 
     assert result["success"] is False
     assert result["error_type"] == "RATE_LIMIT_ERROR"
+
+
+@pytest.mark.parametrize("error", [
+    linkedin.PlaywrightTimeoutError("Locator.click: Timeout 5000ms exceeded."),
+    RuntimeError("Target crashed"),
+])
+def test_failure_screenshot_is_taken_before_playwright_shuts_down(monkeypatch, tmp_path, error):
+    page = FakePage(FEED_URL)
+    adapter = _adapter(monkeypatch, tmp_path)
+    monkeypatch.setattr(linkedin, "sync_playwright", _fake_sync_playwright(page))
+
+    def broken_step(*args):
+        raise error
+
+    monkeypatch.setattr(adapter, "_ensure_authenticated", broken_step)
+
+    result = adapter.post_ad({"id": "AD-1"}, "Caption")
+
+    assert result["success"] is False
+    assert result["screenshot_path"] is not None
+    assert page.screenshots == [result["screenshot_path"]]

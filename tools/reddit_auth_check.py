@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.paths import SETTINGS_FILE  # noqa: E402
 from src.secret_loader import load_secrets  # noqa: E402
 
 PLACEHOLDERS = {"your_id", "your_secret", "your_token", "", None}
@@ -26,7 +27,7 @@ def main() -> int:
 
     import os
 
-    settings = json.loads(Path("config/settings.json").read_text(encoding="utf-8"))
+    settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     cfg = settings.get("reddit", {})
 
     fields = {
